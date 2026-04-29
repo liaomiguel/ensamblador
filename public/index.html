@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ENSAMBLADOR.io | Combate Modular Espacial</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Space+Grotesk:wght@300;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="scanlines"></div>
+    <div id="game-ui">
+        <div id="leaderboard">
+            <h3>Leaderboard</h3>
+            <ul id="leaderboard-list"></ul>
+        </div>
+        <div id="ship-status">
+            <div id="health-bar-container">
+                <div id="health-bar"></div>
+            </div>
+            <div id="module-count">Modules: 1</div>
+        </div>
+        <div id="minimap-container">
+            <canvas id="minimap-canvas"></canvas>
+        </div>
+        <div id="controls-hint">
+            WASD to Move • SPACE to Shoot • MOUSE to Aim
+        </div>
+    </div>
+    
+    <div id="menu-overlay">
+        <div class="glass-card">
+            <h1>ENSAMBLADOR<span>.IO</span></h1>
+            <p>Construye tu nave, protege tu núcleo.</p>
+            <input type="text" id="nickname" placeholder="Nickname..." maxlength="15">
+            <div class="flight-manual">
+                <div class="control-row"><span>[W]</span> PROPULSOR</div>
+                <div class="control-row"><span>[A/D]</span> ROTACIÓN</div>
+                <div class="control-row"><span>[SPACE]</span> DISPARAR</div>
+                <div class="control-row"><span>[MOUSE]</span> APUNTAR</div>
+            </div>
+            <button id="play-button">INICIAR_SESIÓN</button>
+            <div class="stats-preview">
+                <div class="stat" style="border-color: #00f2ff"><span>Propulsor (Cian)</span> +Velocidad de empuje</div>
+                <div class="stat" style="border-color: #ff0055"><span>Cañón (Rojo)</span> Ataque a distancia</div>
+                <div class="stat" style="border-color: #bf00ff"><span>Escudo (Púrpura)</span> Defensa reforzada</div>
+                <div class="stat" style="border-color: #ffff00"><span>Taladro (Amarillo)</span> Daño por choque</div>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="game-canvas"></canvas>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <script src="game.js" type="module"></script>
+</body>
+</html>
