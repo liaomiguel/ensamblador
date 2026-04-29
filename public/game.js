@@ -179,7 +179,16 @@ function draw() {
             ctx.lineWidth = 2; ctx.shadowBlur = 10; ctx.shadowColor = ctx.strokeStyle;
             ctx.strokeRect(x - size/2, y - size/2, size, size);
             ctx.fillRect(x - size/2, y - size/2, size, size);
-            if (mod.type === 'core') { ctx.fillStyle = '#fff'; ctx.fillRect(x - 5, y - 5, 10, 10); }
+            if (mod.type === 'core') { 
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.moveTo(x + 12, y);      // Punta (frente)
+                ctx.lineTo(x - 10, y - 10); // Base superior
+                ctx.lineTo(x - 5, y);       // Hendidura
+                ctx.lineTo(x - 10, y + 10); // Base inferior
+                ctx.closePath();
+                ctx.fill();
+            }
             else if (mod.type === 'thruster') {
                 ctx.strokeStyle = p.boostActive ? '#ffffff' : '#00f2ff';
                 ctx.beginPath(); ctx.moveTo(x-size/2, y-5); ctx.lineTo(x-size/2-(p.boostActive ? 45 : 18), y); ctx.lineTo(x-size/2, y+5); ctx.stroke();
