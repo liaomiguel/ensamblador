@@ -225,6 +225,32 @@ button:hover::before {
     margin-top: 5px;
 }
 
+.footer-credits {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.4);
+    letter-spacing: 2px;
+    text-align: center;
+    pointer-events: auto;
+}
+
+.footer-credits a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: bold;
+    transition: 0.3s;
+    border-bottom: 1px solid transparent;
+}
+
+.footer-credits a:hover {
+    color: #fff;
+    border-bottom-color: var(--primary);
+    text-shadow: 0 0 10px var(--primary);
+}
+
 #controls-hint {
     position: absolute;
     bottom: 5px;
