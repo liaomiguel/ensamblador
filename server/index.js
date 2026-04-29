@@ -213,4 +213,6 @@ io.on('connection', (socket) => {
     });
 });
 
-httpServer.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 ENSAMBLADOR.io ejecutándose en el puerto ${PORT}`);
+});
