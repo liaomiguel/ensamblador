@@ -16,12 +16,10 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Matter.js engine
 const Engine = Matter.Engine,
       World = Matter.World,
       Bodies = Matter.Bodies,
-      Body = Matter.Body,
-      Composite = Matter.Composite;
+      Body = Matter.Body;
 
 const engine = Engine.create();
 engine.gravity.y = 0;
@@ -29,84 +27,55 @@ engine.gravity.y = 0;
 const players = {};
 const modules = [];
 const projectiles = [];
+const obstacles = [];
 const mapSize = 3000;
 
-// Map Boundaries (Walls)
 const wallThickness = 100;
 const half = mapSize / 2;
 const walls = [
-    Bodies.rectangle(0, -half - wallThickness/2, mapSize, wallThickness, { isStatic: true, label: 'wall' }), // Top
-    Bodies.rectangle(0, half + wallThickness/2, mapSize, wallThickness, { isStatic: true, label: 'wall' }),  // Bottom
-    Bodies.rectangle(-half - wallThickness/2, 0, wallThickness, mapSize, { isStatic: true, label: 'wall' }), // Left
-    Bodies.rectangle(half + wallThickness/2, 0, wallThickness, mapSize, { isStatic: true, label: 'wall' })   // Right
+    Bodies.rectangle(0, -half - wallThickness/2, mapSize, wallThickness, { isStatic: true, label: 'wall' }),
+    Bodies.rectangle(0, half + wallThickness/2, mapSize, wallThickness, { isStatic: true, label: 'wall' }),
+    Bodies.rectangle(-half - wallThickness/2, 0, wallThickness, mapSize, { isStatic: true, label: 'wall' }),
+    Bodies.rectangle(half + wallThickness/2, 0, wallThickness, mapSize, { isStatic: true, label: 'wall' })
 ];
 World.add(engine.world, walls);
 
-const obstacles = [];
 function spawnSatellite() {
-    const x = (Math.random() - 0.5) * mapSize;
-    const y = (Math.random() - 0.5) * mapSize;
+    const x = (Math.random() - 0.5) * (mapSize - 200);
+    const y = (Math.random() - 0.5) * (mapSize - 200);
     const body = Bodies.polygon(x, y, 6, 60, { isStatic: true, label: 'satellite' });
     obstacles.push(body);
     World.add(engine.world, body);
 }
-for (let i = 0; i < 8; i++) spawnSatellite();
+for (let i = 0; i < 10; i++) spawnSatellite();
 
-// Module generation
 function spawnModule() {
     const types = ['thruster', 'cannon', 'shield', 'drill'];
     const type = types[Math.floor(Math.random() * types.length)];
-    const x = (Math.random() - 0.5) * mapSize;
-    const y = (Math.random() - 0.5) * mapSize;
-    
-    const body = Bodies.rectangle(x, y, 20, 20, { 
-        isSensor: true,
-        label: 'junk_module',
-        plugin: { type }
-    });
-    
+    const x = (Math.random() - 0.5) * (mapSize - 100);
+    const y = (Math.random() - 0.5) * (mapSize - 100);
+    const body = Bodies.rectangle(x, y, 20, 20, { isSensor: true, label: 'junk_module', plugin: { type } });
     modules.push({ body, type });
     World.add(engine.world, body);
 }
-
 for (let i = 0; i < 150; i++) spawnModule();
 
 function rebuildShip(player) {
+    if (!player.body) return;
     const oldPos = player.body.position;
     const oldAngle = player.body.angle;
     const oldVel = player.body.velocity;
-    
     World.remove(engine.world, player.body);
-
-    const parts = player.shipStructure.map(m => {
-        const part = Bodies.rectangle(m.x * 40, m.y * 40, 38, 38, {
-            label: m.type,
-            plugin: { gridX: m.x, gridY: m.y }
-        });
-        return part;
-    });
-
-    const compoundBody = Body.create({
-        parts: parts,
-        frictionAir: 0.05,
-        restitution: 0.5,
-        label: 'player_ship'
-    });
-
-    Body.setPosition(compoundBody, oldPos);
-    Body.setAngle(compoundBody, oldAngle);
-    Body.setVelocity(compoundBody, oldVel);
-    
-    player.body = compoundBody;
-    World.add(engine.world, compoundBody);
+    const parts = player.shipStructure.map(m => Bodies.rectangle(m.x * 40, m.y * 40, 38, 38, { label: m.type, plugin: { gridX: m.x, gridY: m.y } }));
+    player.body = Body.create({ parts, frictionAir: 0.03, restitution: 0.5, label: 'player_ship' });
+    Body.setPosition(player.body, oldPos);
+    Body.setAngle(player.body, oldAngle);
+    Body.setVelocity(player.body, oldVel);
+    World.add(engine.world, player.body);
 }
 
 function dropModule(x, y, type) {
-    const body = Bodies.rectangle(x, y, 20, 20, { 
-        isSensor: true,
-        label: 'junk_module',
-        plugin: { type }
-    });
+    const body = Bodies.rectangle(x, y, 20, 20, { isSensor: true, label: 'junk_module', plugin: { type } });
     modules.push({ body, type });
     World.add(engine.world, body);
 }
@@ -114,319 +83,178 @@ function dropModule(x, y, type) {
 Matter.Events.on(engine, 'collisionStart', (event) => {
     event.pairs.forEach(pair => {
         const { bodyA, bodyB } = pair;
-
-        // Player Part - Junk Module
         const shipPart = [bodyA, bodyB].find(b => ['core', 'thruster', 'cannon', 'shield', 'drill'].includes(b.label));
         const junkMod = [bodyA, bodyB].find(b => b.label === 'junk_module');
+        if (shipPart && junkMod) attachToPlayer(shipPart, junkMod);
 
-        if (shipPart && junkMod) {
-            attachToPlayer(shipPart, junkMod);
-        }
-
-        // Projectile - Ship Part
         const projectile = [bodyA, bodyB].find(b => b.label === 'projectile');
-        if (projectile && shipPart) {
-            damagePlayer(shipPart, projectile);
-        }
+        if (projectile && shipPart) damagePlayer(shipPart, 'PROJECTILE');
 
-        // Drill - Ship Part (Melee)
         const drillPart = [bodyA, bodyB].find(b => b.label === 'drill');
-        if (drillPart && shipPart && drillPart !== shipPart) {
-            damagePlayer(shipPart, drillPart, true);
-        }
+        if (drillPart && shipPart && drillPart !== shipPart) damagePlayer(shipPart, 'DRILL');
 
-        // Ship Part - Satellite
         const satellite = [bodyA, bodyB].find(b => b.label === 'satellite');
-        if (shipPart && satellite) {
-            triggerSatelliteCollision(shipPart);
-        }
+        if (shipPart && satellite) triggerSatelliteCollision(shipPart);
     });
 });
 
-function triggerSatelliteCollision(shipPart) {
-    const player = Object.values(players).find(p => p.body.parts && p.body.parts.some(part => part === shipPart));
-    if (!player || player.shipStructure.length < 6) return;
+function damagePlayer(shipPart, cause) {
+    const player = Object.values(players).find(p => p.body?.parts?.includes(shipPart));
+    if (!player) return;
+    const gridX = shipPart.plugin?.gridX;
+    const gridY = shipPart.plugin?.gridY;
 
-    // Massive damage: Drop half of modules
-    const toDrop = Math.floor(player.shipStructure.length / 2);
-    for (let i = 0; i < toDrop; i++) {
-        if (player.shipStructure.length <= 1) break;
-        const idx = Math.floor(Math.random() * (player.shipStructure.length - 1)) + 1; // Don't drop core
-        const mod = player.shipStructure.splice(idx, 1)[0];
-        dropModule(player.body.position.x + mod.x * 40, player.body.position.y + mod.y * 40, mod.type);
+    if (gridX === 0 && gridY === 0) {
+        io.to(player.id).emit('gameover', { reason: `NÚCLEO DESTRUIDO POR: ${cause}` });
+        if (player.body) World.remove(engine.world, player.body);
+        player.body = null;
+        player.nickname = '';
+    } else if (gridX !== undefined) {
+        const idx = player.shipStructure.findIndex(m => m.x === gridX && m.y === gridY);
+        if (idx !== -1) {
+            const mod = player.shipStructure.splice(idx, 1)[0];
+            dropModule(shipPart.position.x, shipPart.position.y, mod.type);
+            rebuildShip(player);
+        }
     }
-    rebuildShip(player);
+}
+
+function triggerSatelliteCollision(shipPart) {
+    const player = Object.values(players).find(p => p.body?.parts?.includes(shipPart));
+    if (!player) return;
+    if (player.shipStructure.length >= 6) {
+        const toDrop = Math.floor(player.shipStructure.length / 2);
+        for (let i = 0; i < toDrop; i++) {
+            if (player.shipStructure.length <= 1) break;
+            const idx = Math.floor(Math.random() * (player.shipStructure.length - 1)) + 1;
+            const mod = player.shipStructure.splice(idx, 1)[0];
+            dropModule(player.body.position.x + mod.x * 40, player.body.position.y + mod.y * 40, mod.type);
+        }
+        rebuildShip(player);
+    }
+    if (shipPart.label === 'core') {
+        io.to(player.id).emit('gameover', { reason: 'SOBRECARGA POR SATÉLITE' });
+        if (player.body) World.remove(engine.world, player.body);
+        player.body = null;
+        player.nickname = '';
+    }
 }
 
 function attachToPlayer(shipPart, junkBody) {
-    // Find player by searching for the body part in their compound body
-    const player = Object.values(players).find(p => 
-        p.body.parts && p.body.parts.some(part => part === shipPart)
-    );
-    
-    if (!player) return;
-
+    const player = Object.values(players).find(p => p.body?.parts?.includes(shipPart));
+    if (!player || player.shipStructure.length >= 50) return;
     const type = junkBody.plugin.type;
-    const shipParts = player.shipStructure;
-    
-    // Find adjacent slot to the specific part that touched the module
-    const gridX = shipPart.plugin.gridX;
-    const gridY = shipPart.plugin.gridY;
-    
-    const neighbors = [{x: 1, y: 0}, {x: -1, y: 0}, {x: 0, y: 1}, {x: 0, y: -1}];
+    const gridX = shipPart.plugin?.gridX;
+    const gridY = shipPart.plugin?.gridY;
+    if (gridX === undefined) return;
+
+    const neighbors = [{x:1,y:0}, {x:-1,y:0}, {x:0,y:1}, {x:0,y:-1}];
     for (let n of neighbors) {
         const nx = gridX + n.x;
         const ny = gridY + n.y;
-        if (!shipParts.find(p => p.x === nx && p.y === ny)) {
+        if (!player.shipStructure.some(s => s.x === nx && s.y === ny)) {
             player.shipStructure.push({ x: nx, y: ny, type });
-            
             const idx = modules.findIndex(m => m.body === junkBody);
-            if (idx !== -1) {
-                World.remove(engine.world, junkBody);
-                modules.splice(idx, 1);
-                spawnModule();
-            }
+            if (idx !== -1) { World.remove(engine.world, junkBody); modules.splice(idx, 1); spawnModule(); }
             rebuildShip(player);
             return;
         }
     }
 }
 
-function damagePlayer(shipBody, attackerBody, contactPoint, isDrill = false) {
-    // Find parent ship body
-    const player = Object.values(players).find(p => p.body === shipBody || p.body.parts.includes(shipBody));
-    if (!player) return;
-
-    // Determine which part was hit
-    // If it's a compound body hit, the sub-part is in pair.bodyA/B
-    const hitPart = shipBody; // This is actually the sub-part in Matter collisions
-    const gridX = hitPart.plugin.gridX;
-    const gridY = hitPart.plugin.gridY;
-
-    if (gridX === 0 && gridY === 0) {
-        // HIT CORE -> GAMEOVER
-        io.to(player.id).emit('gameover');
-        World.remove(engine.world, player.body);
-        delete players[player.id];
-    } else {
-        // HIT MODULE -> DETACH/DESTROY
-        const modIdx = player.shipStructure.findIndex(m => m.x === gridX && m.y === gridY);
-        if (modIdx !== -1) {
-            const mod = player.shipStructure[modIdx];
-            player.shipStructure.splice(modIdx, 1);
-            dropModule(player.body.position.x + gridX * 40, player.body.position.y + gridY * 40, mod.type);
-            rebuildShip(player);
-        }
-    }
-
-    // Remove projectile if hit
-    if (attackerBody.label === 'projectile') {
-        const pIdx = projectiles.findIndex(p => p.body === attackerBody);
-        if (pIdx !== -1) {
-            World.remove(engine.world, attackerBody);
-            projectiles.splice(pIdx, 1);
-        }
-    }
-}
-
 io.on('connection', (socket) => {
-    players[socket.id] = {
-        id: socket.id,
-        nickname: '',
-        body: Bodies.rectangle(0, 0, 40, 40), // Placeholder
-        shipStructure: [{ x: 0, y: 0, type: 'core' }],
-        inputs: { up: false, left: false, right: false, down: false, shoot: false, boost: false, brake: false, rotate: false },
-        lastShoot: 0
-    };
-
+    players[socket.id] = { id: socket.id, nickname: '', body: null, shipStructure: [{ x: 0, y: 0, type: 'core' }], inputs: {}, lastShoot: 0 };
     socket.on('join', (name) => {
-        if (!players[socket.id]) {
-            players[socket.id] = {
-                id: socket.id,
-                nickname: '',
-                body: null,
-                shipStructure: [{ x: 0, y: 0, type: 'core' }],
-                inputs: { up: false, left: false, right: false, down: false, shoot: false, boost: false, brake: false, rotate: false },
-                lastShoot: 0
-            };
-        }
-        
-        const player = players[socket.id];
-        player.nickname = name || 'UNK_USER';
-        
-        const startX = (Math.random() - 0.5) * 2000;
-        const startY = (Math.random() - 0.5) * 2000;
-        
-        const core = Bodies.rectangle(startX, startY, 38, 38, {
-            label: 'core',
-            plugin: { gridX: 0, gridY: 0 }
-        });
-        
-        player.body = Body.create({
-            parts: [core],
-            frictionAir: 0.05,
-            restitution: 0.5,
-            label: 'player_ship'
-        });
-        
-        World.add(engine.world, player.body);
+        if (!players[socket.id]) players[socket.id] = { id: socket.id, nickname: '', body: null, shipStructure: [{x:0,y:0,type:'core'}], inputs: {}, lastShoot:0 };
+        const p = players[socket.id];
+        p.nickname = name || 'UNK_USER';
+        p.shipStructure = [{x:0,y:0,type:'core'}];
+        const core = Bodies.rectangle((Math.random()-0.5)*2000, (Math.random()-0.5)*2000, 38, 38, { label: 'core', plugin: { gridX: 0, gridY: 0 } });
+        p.body = Body.create({ parts: [core], frictionAir: 0.03, restitution: 0.5, label: 'player_ship' });
+        World.add(engine.world, p.body);
     });
-
     socket.on('input', (i) => { 
         if (players[socket.id]) {
-            const oldInputs = players[socket.id].inputs;
-            players[socket.id].inputs = i; 
-            if (i.rotate && !oldInputs.rotate) {
-                rotateShip(players[socket.id]);
-            }
-            // Drop Logic (Q)
-            if (i.drop && !oldInputs.drop) {
-                ejectModule(players[socket.id]);
-            }
+            const old = players[socket.id].inputs;
+            players[socket.id].inputs = i;
+            if (i.rotate && !old.rotate) rotateShip(players[socket.id]);
+            if (i.drop && !old.drop) ejectModule(players[socket.id]);
         }
     });
-
-    socket.on('disconnect', () => {
-        if (players[socket.id]) {
-            World.remove(engine.world, players[socket.id].body);
-            delete players[socket.id];
-        }
-    });
+    socket.on('disconnect', () => { if (players[socket.id]) { if (players[socket.id].body) World.remove(engine.world, players[socket.id].body); delete players[socket.id]; } });
 });
 
 function rotateShip(player) {
-    // 1. Rotate basic coordinates
-    player.shipStructure = player.shipStructure.map(mod => {
-        if (mod.type === 'core') return mod;
-        return { ...mod, x: -mod.y, y: mod.x };
-    });
-
-    // 2. Consolidate: Ensure everything is connected to core and compact
+    if (!player.body) return;
+    player.shipStructure = player.shipStructure.map(mod => mod.type === 'core' ? mod : { ...mod, x: -mod.y, y: mod.x });
     const toProcess = [...player.shipStructure.filter(m => m.type !== 'core')];
     toProcess.sort((a, b) => (Math.abs(a.x) + Math.abs(a.y)) - (Math.abs(b.x) + Math.abs(b.y)));
-
-    const finalStructure = [{ x: 0, y: 0, type: 'core' }];
+    const final = [{ x: 0, y: 0, type: 'core' }];
     for (let mod of toProcess) {
-        if (hasNeighbor(mod.x, mod.y, finalStructure)) {
-            finalStructure.push(mod);
-        } else {
-            const spot = findNearestSpot(mod.x, mod.y, finalStructure);
-            finalStructure.push({ x: spot.x, y: spot.y, type: mod.type });
-        }
+        if (hasNeighbor(mod.x, mod.y, final)) final.push(mod);
+        else { const spot = findNearestSpot(mod.x, mod.y, final); final.push({ x: spot.x, y: spot.y, type: mod.type }); }
     }
-
-    player.shipStructure = finalStructure;
+    player.shipStructure = final;
     rebuildShip(player);
 }
 
 function ejectModule(player) {
-    if (player.shipStructure.length <= 1) return;
+    if (!player.body || player.shipStructure.length <= 1) return;
     const idx = Math.floor(Math.random() * (player.shipStructure.length - 1)) + 1;
     const mod = player.shipStructure.splice(idx, 1)[0];
     dropModule(player.body.position.x + mod.x * 20, player.body.position.y + mod.y * 20, mod.type);
     rebuildShip(player);
 }
 
-function hasNeighbor(x, y, structure) {
-    return structure.some(m => (Math.abs(m.x - x) === 1 && m.y === y) || (Math.abs(m.y - y) === 1 && m.x === x));
-}
-
-function findNearestSpot(targetX, targetY, structure) {
-    let bestSpot = { x: 0, y: 1 };
-    let minDist = Infinity;
-    const neighbors = [{x:1,y:0}, {x:-1,y:0}, {x:0,y:1}, {x:0,y:-1}];
-    for (let m of structure) {
-        for (let n of neighbors) {
-            const nx = m.x + n.x;
-            const ny = m.y + n.y;
-            if (!structure.some(s => s.x === nx && s.y === ny)) {
-                const d = Math.abs(nx - targetX) + Math.abs(ny - targetY);
-                if (d < minDist) {
-                    minDist = d;
-                    bestSpot = { x: nx, y: ny };
-                }
-            }
+function hasNeighbor(x, y, structure) { return structure.some(m => (Math.abs(m.x - x) === 1 && m.y === y) || (Math.abs(m.y - y) === 1 && m.x === x)); }
+function findNearestSpot(tx, ty, s) {
+    let best = {x:0,y:1}, min = Infinity;
+    const nb = [{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
+    for (let m of s) { for (let n of nb) {
+        const nx = m.x + n.x, ny = m.y + n.y;
+        if (!s.some(i => i.x === nx && i.y === ny)) {
+            const d = Math.abs(nx - tx) + Math.abs(ny - ty);
+            if (d < min) { min = d; best = { x: nx, y: ny }; }
         }
-    }
-    return bestSpot;
+    }}
+    return best;
 }
 
 setInterval(() => {
     Engine.update(engine, 1000 / 60);
-
-    Object.values(players).forEach(player => {
-        if (!player.body.parts) return;
-        const { body, inputs, shipStructure } = player;
-        
-        let force = 0.005 + (shipStructure.filter(m => m.type === 'thruster').length * 0.003);
-        const torque = 0.05;
-
-        if (inputs.brake) {
-            Body.setVelocity(body, { x: body.velocity.x * 0.9, y: body.velocity.y * 0.9 });
-            Body.setAngularVelocity(body, body.angularVelocity * 0.9);
-            player.isBraking = true;
-        } else {
-            player.isBraking = false;
-        }
-
-        if (inputs.boost && (!player.lastBoost || Date.now() - player.lastBoost > 2000)) {
-            player.boostActive = true;
-            player.boostStartTime = Date.now();
-            player.lastBoost = Date.now();
-        }
-
-        if (player.boostActive) {
-            if (Date.now() - player.boostStartTime < 500) force *= 4;
-            else player.boostActive = false;
-        }
-
-        if (inputs.up) Body.applyForce(body, body.position, { x: Math.cos(body.angle) * force, y: Math.sin(body.angle) * force });
-        if (inputs.left) Body.setAngularVelocity(body, -torque);
-        if (inputs.right) Body.setAngularVelocity(body, torque);
-
-        if (inputs.shoot && Date.now() - player.lastShoot > 400) {
-            shipStructure.filter(m => m.type === 'cannon').forEach(m => {
-                const angle = body.angle;
-                const spawnX = body.position.x + (m.x * 40 * Math.cos(angle)) - (m.y * 40 * Math.sin(angle)) + Math.cos(angle) * 40;
-                const spawnY = body.position.y + (m.x * 40 * Math.sin(angle)) + (m.y * 40 * Math.cos(angle)) + Math.sin(angle) * 40;
-                
-                const p = Bodies.circle(spawnX, spawnY, 5, { 
-                    label: 'projectile',
-                    frictionAir: 0,
-                    restitution: 1
-                });
-                Body.setVelocity(p, { x: Math.cos(angle) * 15, y: Math.sin(angle) * 15 });
-                projectiles.push({ body: p, life: 100 });
-                World.add(engine.world, p);
+    Object.values(players).forEach(p => {
+        if (!p.body) return;
+        let force = 0.012 + (p.shipStructure.filter(m => m.type === 'thruster').length * 0.006);
+        const torque = 0.12;
+        if (p.inputs.brake) { Body.setVelocity(p.body, { x: p.body.velocity.x * 0.9, y: p.body.velocity.y * 0.9 }); Body.setAngularVelocity(p.body, p.body.angularVelocity * 0.9); p.isBraking = true; } else p.isBraking = false;
+        if (p.inputs.boost && (!p.lastBoost || Date.now() - p.lastBoost > 2000)) { p.boostActive = true; p.boostStartTime = Date.now(); p.lastBoost = Date.now(); }
+        if (p.boostActive) { if (Date.now() - p.boostStartTime < 500) force *= 3; else p.boostActive = false; }
+        if (p.inputs.up) Body.applyForce(p.body, p.body.position, { x: Math.cos(p.body.angle) * force, y: Math.sin(p.body.angle) * force });
+        if (p.inputs.left) Body.setAngularVelocity(p.body, -torque);
+        if (p.inputs.right) Body.setAngularVelocity(p.body, torque);
+        if (p.inputs.shoot && Date.now() - p.lastShoot > 250) {
+            p.shipStructure.filter(m => m.type === 'cannon').forEach(m => {
+                const angle = p.body.angle;
+                const sx = p.body.position.x + (m.x * 40 * Math.cos(angle)) - (m.y * 40 * Math.sin(angle)) + Math.cos(angle) * 40;
+                const sy = p.body.position.y + (m.x * 40 * Math.sin(angle)) + (m.y * 40 * Math.cos(angle)) + Math.sin(angle) * 40;
+                const b = Bodies.circle(sx, sy, 5, { label: 'projectile', frictionAir: 0, restitution: 1 });
+                Body.setVelocity(b, { x: Math.cos(angle) * 22, y: Math.sin(angle) * 22 });
+                projectiles.push({ body: b, life: 70 });
+                World.add(engine.world, b);
             });
-            player.lastShoot = Date.now();
+            p.lastShoot = Date.now();
         }
     });
-
     for (let i = projectiles.length - 1; i >= 0; i--) {
         projectiles[i].life--;
-        if (projectiles[i].life <= 0) {
-            World.remove(engine.world, projectiles[i].body);
-            projectiles.splice(i, 1);
-        }
+        if (projectiles[i].life <= 0) { World.remove(engine.world, projectiles[i].body); projectiles.splice(i, 1); }
     }
-
     io.emit('state', {
-        players: Object.values(players).filter(p => p.nickname).map(p => ({
-            id: p.id,
-            nickname: p.nickname,
-            position: p.body.position,
-            angle: p.body.angle,
-            modules: p.shipStructure,
-            boostActive: p.boostActive,
-            isBraking: p.isBraking
-        })),
+        players: Object.values(players).filter(p => p.nickname && p.body).map(p => ({ id: p.id, nickname: p.nickname, position: p.body.position, angle: p.body.angle, modules: p.shipStructure, boostActive: p.boostActive, isBraking: p.isBraking })),
         modules: modules.map(m => ({ position: m.body.position, type: m.type })),
         projectiles: projectiles.map(p => ({ position: p.body.position })),
         satellites: obstacles.map(o => ({ position: o.position, angle: o.angle }))
     });
 }, 1000 / 60);
 
-httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 ENSAMBLADOR.io ejecutándose en el puerto ${PORT}`);
-});
+httpServer.listen(PORT, '0.0.0.0', () => console.log(`🚀 ENSAMBLADOR.io ejecutándose en el puerto ${PORT}`));
