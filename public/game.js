@@ -47,7 +47,7 @@ function createParticles(x, y, color, count = 5, speed = 2, life = 20) {
     }
 }
 
-const inputs = { up: false, left: false, right: false, down: false, shoot: false, boost: false, brake: false, rotate: false };
+const inputs = { up: false, left: false, right: false, down: false, shoot: false, boost: false, brake: false, rotate: false, drop: false };
 
 window.addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase();
@@ -59,6 +59,7 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'Shift') inputs.boost = true;
     if (k === 'e') inputs.brake = true;
     if (k === 'r') inputs.rotate = true;
+    if (k === 'q') inputs.drop = true;
     socket.emit('input', inputs);
 });
 
@@ -72,6 +73,7 @@ window.addEventListener('keyup', (e) => {
     if (e.key === 'Shift') inputs.boost = false;
     if (k === 'e') inputs.brake = false;
     if (k === 'r') inputs.rotate = false;
+    if (k === 'q') inputs.drop = false;
     socket.emit('input', inputs);
 });
 

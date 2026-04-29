@@ -276,7 +276,13 @@ io.on('connection', (socket) => {
         if (players[socket.id]) {
             const oldInputs = players[socket.id].inputs;
             players[socket.id].inputs = i; 
-            if (i.rotate && !oldInputs.rotate) rotateShip(players[socket.id]);
+            if (i.rotate && !oldInputs.rotate) {
+                rotateShip(players[socket.id]);
+            }
+            // Drop Logic (Q)
+            if (i.drop && !oldInputs.drop) {
+                ejectModule(players[socket.id]);
+            }
         }
     });
 
@@ -310,6 +316,14 @@ function rotateShip(player) {
     }
 
     player.shipStructure = finalStructure;
+    rebuildShip(player);
+}
+
+function ejectModule(player) {
+    if (player.shipStructure.length <= 1) return;
+    const idx = Math.floor(Math.random() * (player.shipStructure.length - 1)) + 1;
+    const mod = player.shipStructure.splice(idx, 1)[0];
+    dropModule(player.body.position.x + mod.x * 20, player.body.position.y + mod.y * 20, mod.type);
     rebuildShip(player);
 }
 
