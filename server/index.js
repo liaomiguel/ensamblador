@@ -55,13 +55,13 @@ function spawnMovingSatellite() {
     const startY = (Math.random() - 0.5) * (mapSize - 800);
     const range = 300 + Math.random() * 500;
     const isVertical = Math.random() > 0.5;
-    const body = Bodies.polygon(startX, startY, 4, 25, { 
+    const body = Bodies.polygon(startX, startY, 3, 35, { 
         isStatic: true, 
         label: 'moving_satellite' 
     });
     body.plugin = { 
         startX, startY, range, isVertical, 
-        speed: 0.0004 + Math.random() * 0.0008, 
+        speed: 0.0001 + Math.random() * 0.0002, 
         offset: Math.random() * Math.PI * 2 
     };
     movingSatellites.push(body);

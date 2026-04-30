@@ -1,55 +1,56 @@
 # 🚀 ENSAMBLADOR.io
 
-**ENSAMBLADOR.io** es un juego multijugador masivo en tiempo real inspirado en *Agar.io*, pero con un enfoque en la **ingeniería espacial y el combate modular**. Aquí no ganas por ser el más grande, sino por tener el mejor diseño.
+**ENSAMBLADOR.io** es un simulador de combate espacial multijugador masivo (IO) basado en física. Construye tu nave pieza a pieza, sobrevive a peligros ambientales y domina la arena destruyendo los núcleos de tus oponentes.
 
-![Aesthetic Preview](https://img.shields.io/badge/Aesthetics-Cyberpunk-blueviolet?style=for-the-badge)
-![Physics](https://img.shields.io/badge/Physics-Matter.js-00f2ff?style=for-the-badge)
-![Tech](https://img.shields.io/badge/Tech-Socket.io-ffffff?style=for-the-badge)
+![Premium Design](https://img.shields.io/badge/Design-Premium-gold?style=for-the-badge)
+![Tech Stack](https://img.shields.io/badge/Stack-Node.js%20%7C%20Socket.io%20%7C%20Matter.js-blue?style=for-the-badge)
 
-## 🌌 El Concepto
+## 🎮 El Juego
 
-Empiezas como un simple **Núcleo (Core)** flotando en el vacío. Tu objetivo es recoger **Chatarra Espacial** (módulos) para expandir tu nave y proteger tu núcleo a toda costa. Si destruyen tu núcleo, pierdes.
+En un universo de chatarra espacial, eres un **Núcleo** solitario. Tu misión es recolectar módulos para evolucionar tu estructura y convertirte en la fuerza dominante.
 
-### 🛠️ Tipos de Módulos
-| Módulo | Función | Ventaja |
-| :--- | :--- | :--- |
-| **Propulsor** | Aumenta la velocidad | Escapes rápidos y maniobrabilidad. |
-| **Cañón** | Dispara proyectiles | Ataque a distancia (genera retroceso). |
-| **Escudo** | Bloquea impactos | Alta resistencia a disparos. |
-| **Taladro** | Daño por contacto | Destroza naves enemigas de cerca. |
+### 🛠️ Mecánicas Únicas
+- **Ensamblaje Modular:** Las piezas se conectan físicamente a tu nave mediante un sistema de rejilla dinámica.
+- **Auto-Reorganización (R):** Un algoritmo inteligente que ordena tus piezas en una formación triangular táctica de combate.
+- **Inercia Espacial:** Simulación de levitación constante en gravedad cero.
+- **Freno de Emergencia (E):** Control absoluto para maniobras evasivas precisas.
+- **Sistema de Daño por Capas:** Protege tu núcleo con escudos y módulos; si el núcleo cae, se acaba el juego.
 
-## 🎮 Controles
-- **WASD / Flechas**: Moverse y rotar.
-- **ESPACIO**: Disparar (si tienes cañones).
-- **RATÓN**: Apuntar (la cámara te sigue).
+## 🧱 Tipos de Módulos
+- ⚪ **Núcleo:** Tu centro vital. Protégelo a toda costa.
+- 🟡 **Taladro:** Arma de contacto letal para embestidas.
+- 🔴 **Cañón:** Sistema de defensa y ataque a larga distancia.
+- 🟣 **Escudo:** Módulo de alta resistencia y absorción de impactos.
+- 🔵 **Propulsor:** Mejora la potencia de empuje y la capacidad de turbo.
 
-## 🛠️ Tecnologías Utilizadas
+## 🌌 Peligros del Entorno
+- **Satélites Hexagonales:** Estáticos y masivos. Provocan la pérdida masiva de módulos.
+- **Patrullas Triangulares:** Pequeños drones cian que patrullan lentamente. Difíciles de esquivar a alta velocidad.
 
-- **Frontend**: HTML5 Canvas, Vanilla JavaScript, CSS3 (Glassmorphism).
-- **Backend**: Node.js, Express.
-- **Física**: [Matter.js](https://brm.io/matter-js/) (Simulación en el servidor).
-- **Comunicación**: [Socket.io](https://socket.io/) (Tiempo real).
+## 🛠️ Stack Tecnológico
+- **Motor de Física:** [Matter.js](https://brm.io/matter-js/) para colisiones y dinámicas de cuerpos rígidos.
+- **Comunicación:** [Socket.io](https://socket.io/) para sincronización en tiempo real de baja latencia.
+- **Servidor:** Node.js + Express.
+- **Cliente:** Vanilla JavaScript con Canvas API (Optimizado con Culling e Interpolación LERP).
 
 ## 🚀 Instalación y Ejecución Local
 
-1.  **Clonar el repositorio**:
-    ```bash
-    git clone <tu-repo>
-    cd laserio
-    ```
-2.  **Instalar dependencias**:
-    ```bash
-    npm install
-    ```
-3.  **Ejecutar en desarrollo**:
-    ```bash
-    npm run dev
-    ```
-4.  Abrir `http://localhost:3000` en tu navegador.
+1. Instala las dependencias:
+   ```bash
+   npm install
+   ```
+2. Inicia el servidor de desarrollo:
+   ```bash
+   npm run dev
+   ```
+3. Abre en tu navegador: `http://localhost:3000`
 
-## 🚢 Despliegue en Railway
+## ☁️ Despliegue (Fly.io)
 
-Este proyecto está listo para ser alojado en [Railway.app](https://railway.app/). Solo conecta tu repositorio de GitHub y Railway detectará automáticamente el comando de inicio.
+Este proyecto está listo para ser desplegado en Fly.io:
+```bash
+flyctl deploy
+```
 
 ---
-Desarrollado con ❤️ por Antigravity.
+Desarrollado con ❤️ por el equipo de ENSAMBLADOR.io

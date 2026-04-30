@@ -339,10 +339,22 @@ function drawMovingSatellites() {
     currentState.movingSatellites.forEach(s => {
         if (Math.abs(s.position.x - camera.x) > canvas.width || Math.abs(s.position.y - camera.y) > canvas.height) return;
         ctx.save(); ctx.translate(s.position.x, s.position.y); ctx.rotate(s.angle);
-        ctx.strokeStyle = '#00f2ff'; ctx.lineWidth = 2; ctx.shadowBlur = 10; ctx.shadowColor = '#00f2ff';
-        drawDiamond(ctx, 0, 0, 15);
-        const pulse = (Math.sin(Date.now() / 150) + 1) / 2;
-        ctx.fillStyle = `rgba(0, 242, 255, ${0.2 + pulse * 0.4})`;
+        ctx.strokeStyle = '#00f2ff'; ctx.lineWidth = 3; ctx.shadowBlur = 15; ctx.shadowColor = '#00f2ff';
+        
+        // Dibujar Triángulo
+        ctx.beginPath();
+        for (let i = 0; i < 3; i++) {
+            const angle = (Math.PI * 2 / 3) * i;
+            const r = 25; // Radio visual un poco mayor
+            const x = Math.cos(angle) * r;
+            const y = Math.sin(angle) * r;
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+
+        const pulse = (Math.sin(Date.now() / 300) + 1) / 2;
+        ctx.fillStyle = `rgba(0, 242, 255, ${0.1 + pulse * 0.3})`;
         ctx.fill();
         ctx.restore();
     });
