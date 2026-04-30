@@ -81,19 +81,88 @@ window.addEventListener('keyup', (e) => {
 
 socket.on('connect', () => { myId = socket.id; });
 
-socket.on('state', (state) => {
-    players = state.players || [];
-    modules = state.modules || [];
-    myProjectiles = state.projectiles || [];
-    satellites = state.satellites || [];
-    const me = players.find(p => p.id === myId);
+let targetState = { players: [], modules: [], projectiles: [], satellites: [] };
+let currentState = { players: [], modules: [], projectiles: [], satellites: [] };
+
+socket.on('s', (state) => {
+    // Descomprimir el estado recibido
+    targetState.players = (state.p || []).map(p => ({
+        id: p.i,
+        nickname: p.n,
+        position: p.pos,
+        angle: p.a,
+        modules: p.m,
+        boostActive: p.b,
+        isBraking: p.br
+    }));
+    targetState.modules = (state.m || []).map(m => ({ position: {x: m.x, y: m.y}, type: m.t }));
+    targetState.projectiles = (state.pr || []).map(p => ({ position: {x: p.x, y: p.y} }));
+    targetState.satellites = (state.sa || []).map(s => ({ position: {x: s.x, y: s.y}, angle: s.a }));
+    
+    // Si es el primer paquete, inicializar currentState
+    if (currentState.players.length === 0) currentState = JSON.parse(JSON.stringify(targetState));
+    
+    const me = targetState.players.find(p => p.id === myId);
     if (me) {
-        camera.x = me.position.x;
-        camera.y = me.position.y;
         document.getElementById('module-count').innerText = `Modules: ${me.modules.length}`;
     }
     updateLeaderboard();
 });
+
+// Función LERP para interpolación lineal
+function lerp(start, end, t) {
+    return start + (end - start) * t;
+}
+
+function updateInterpolation() {
+    const t = 0.15; // Factor de suavizado
+    
+    targetState.players.forEach(tp => {
+        let cp = currentState.players.find(p => p.id === tp.id);
+        if (!cp) {
+            currentState.players.push(JSON.parse(JSON.stringify(tp)));
+        } else {
+            cp.position.x = lerp(cp.position.x, tp.position.x, t);
+            cp.position.y = lerp(cp.position.y, tp.position.y, t);
+            
+            // Suavizado de ángulo
+            let diff = tp.angle - cp.angle;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            cp.angle += diff * t;
+            
+            cp.modules = tp.modules;
+            cp.boostActive = tp.boostActive;
+            cp.isBraking = tp.isBraking;
+            cp.nickname = tp.nickname;
+        }
+    });
+    
+    // Eliminar jugadores que ya no están
+    currentState.players = currentState.players.filter(cp => targetState.players.some(tp => tp.id === cp.id));
+    
+    // Cámar sigue al jugador suavemente
+    const me = currentState.players.find(p => p.id === myId);
+    if (me) {
+        camera.x = me.position.x;
+        camera.y = me.position.y;
+    }
+
+    // Interpolación de satélites
+    targetState.satellites.forEach((ts, i) => {
+        if (!currentState.satellites[i]) {
+            currentState.satellites[i] = JSON.parse(JSON.stringify(ts));
+        } else {
+            currentState.satellites[i].position.x = lerp(currentState.satellites[i].position.x, ts.position.x, t);
+            currentState.satellites[i].position.y = lerp(currentState.satellites[i].position.y, ts.position.y, t);
+            currentState.satellites[i].angle = lerp(currentState.satellites[i].angle, ts.angle, t);
+        }
+    });
+    
+    // Las balas y módulos no suelen necesitar tanta interpolación, se actualizan directo
+    currentState.modules = targetState.modules;
+    currentState.projectiles = targetState.projectiles;
+}
 
 socket.on('gameover', (data) => {
     camera.shake = 40;
@@ -120,7 +189,7 @@ playButton.addEventListener('click', () => {
 function updateLeaderboard() {
     const list = document.getElementById('leaderboard-list');
     list.innerHTML = '';
-    const sorted = [...players].sort((a, b) => b.modules.length - a.modules.length);
+    const sorted = [...targetState.players].sort((a, b) => b.modules.length - a.modules.length);
     sorted.slice(0, 5).forEach(p => {
         const li = document.createElement('li');
         li.innerHTML = `<span>${p.nickname || 'UNK_USER'}</span> <strong>${p.modules.length}</strong>`;
@@ -130,14 +199,18 @@ function updateLeaderboard() {
 }
 
 function draw() {
+    updateInterpolation();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
+    
     if (camera.shake > 0) {
         ctx.translate(Math.random() * camera.shake - camera.shake/2, Math.random() * camera.shake - camera.shake/2);
         camera.shake *= 0.9;
         if (camera.shake < 0.1) camera.shake = 0;
     }
+    
     ctx.translate(canvas.width / 2 - camera.x, canvas.height / 2 - camera.y);
+    
     drawBoundaries();
     drawGrid();
     drawSatellites();
@@ -151,65 +224,84 @@ function draw() {
     });
     ctx.globalAlpha = 1;
     
-    modules.forEach(m => {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-        ctx.strokeStyle = moduleColors[m.type] || '#fff';
-        ctx.lineWidth = 1; ctx.shadowBlur = 5; ctx.shadowColor = ctx.strokeStyle;
-        drawDiamond(ctx, m.position.x, m.position.y, 10);
+    // Optimizamos el dibujo de módulos sueltos (sin sombras pesadas)
+    ctx.lineWidth = 1;
+    currentState.modules.forEach(m => {
+        // Solo dibujar si está cerca de la pantalla (Culling simple)
+        if (Math.abs(m.position.x - camera.x) < canvas.width && Math.abs(m.position.y - camera.y) < canvas.height) {
+            ctx.strokeStyle = moduleColors[m.type] || '#fff';
+            drawDiamond(ctx, m.position.x, m.position.y, 10);
+        }
     });
     
-    myProjectiles.forEach(p => {
+    currentState.projectiles.forEach(p => {
         ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(p.position.x, p.position.y); ctx.lineTo(p.position.x - 12, p.position.y); ctx.stroke();
     });
     
-    players.forEach(p => {
+    currentState.players.forEach(p => {
         ctx.save();
         ctx.translate(p.position.x, p.position.y);
+        
+        // Dibujo de nickname (solo si es necesario)
         const topModY = p.modules.length > 0 ? Math.min(...p.modules.map(m => m.y)) : 0;
         const nicknameOffset = topModY * 40 - 30; 
         ctx.fillStyle = p.id === myId ? '#00f2ff' : '#fff';
         ctx.font = '12px "Share Tech Mono"'; ctx.textAlign = 'center';
         ctx.fillText(`> ${p.nickname || 'UNK_USER'}`, 0, nicknameOffset);
-        if (p.isBraking) createParticles(p.position.x, p.position.y, '#ffaa00', 1, 4, 10);
+        
+        if (p.isBraking && Math.random() > 0.5) createParticles(p.position.x, p.position.y, '#ffaa00', 1, 4, 10);
+        
         ctx.rotate(p.angle);
+        
+        // Optimizamos el dibujo de naves: eliminamos shadowBlur si hay muchos jugadores
+        const useEffects = currentState.players.length < 5;
+        if (useEffects) {
+            ctx.shadowBlur = 10;
+        }
+
         p.modules.forEach(mod => {
             const size = 36; const x = mod.x * 40; const y = mod.y * 40;
-            ctx.strokeStyle = moduleColors[mod.type]; ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-            ctx.lineWidth = 2; ctx.shadowBlur = 10; ctx.shadowColor = ctx.strokeStyle;
+            ctx.strokeStyle = moduleColors[mod.type];
+            if (useEffects) ctx.shadowColor = ctx.strokeStyle;
+            
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.lineWidth = 2; 
             ctx.strokeRect(x - size/2, y - size/2, size, size);
             ctx.fillRect(x - size/2, y - size/2, size, size);
+            
             if (mod.type === 'core') { 
                 ctx.fillStyle = '#fff';
                 ctx.beginPath();
-                ctx.moveTo(x + 12, y);      // Punta (frente)
-                ctx.lineTo(x - 10, y - 10); // Base superior
-                ctx.lineTo(x - 5, y);       // Hendidura
-                ctx.lineTo(x - 10, y + 10); // Base inferior
+                ctx.moveTo(x + 12, y);
+                ctx.lineTo(x - 10, y - 10);
+                ctx.lineTo(x - 5, y);
+                ctx.lineTo(x - 10, y + 10);
                 ctx.closePath();
                 ctx.fill();
-            }
-            else if (mod.type === 'thruster') {
+            } else if (mod.type === 'thruster') {
                 ctx.strokeStyle = p.boostActive ? '#ffffff' : '#00f2ff';
                 ctx.beginPath(); ctx.moveTo(x-size/2, y-5); ctx.lineTo(x-size/2-(p.boostActive ? 45 : 18), y); ctx.lineTo(x-size/2, y+5); ctx.stroke();
-                if (p.boostActive) createParticles(p.position.x + x - 20, p.position.y + y, '#00f2ff', 1, 3, 15);
-            }
-            else if (mod.type === 'cannon') { ctx.strokeStyle = '#ff0055'; ctx.strokeRect(x + size/2, y - 4, 15, 8); }
-            else if (mod.type === 'drill') {
+                if (p.boostActive && Math.random() > 0.3) createParticles(p.position.x + x - 20, p.position.y + y, '#00f2ff', 1, 3, 15);
+            } else if (mod.type === 'cannon') { 
+                ctx.strokeStyle = '#ff0055'; ctx.strokeRect(x + size/2, y - 4, 15, 8); 
+            } else if (mod.type === 'drill') {
                 ctx.strokeStyle = '#ffff00'; ctx.beginPath(); ctx.moveTo(x+size/2,y-10); ctx.lineTo(x+size/2+15,y); ctx.lineTo(x+size/2,y+10); ctx.stroke();
             }
         });
         ctx.restore();
     });
+    
     ctx.restore();
     drawMinimap();
     requestAnimationFrame(draw);
 }
 
 function drawSatellites() {
-    satellites.forEach(s => {
+    currentState.satellites.forEach(s => {
+        if (Math.abs(s.position.x - camera.x) > canvas.width || Math.abs(s.position.y - camera.y) > canvas.height) return;
         ctx.save(); ctx.translate(s.position.x, s.position.y); ctx.rotate(s.angle);
-        ctx.strokeStyle = '#ff0055'; ctx.lineWidth = 3; ctx.shadowBlur = 15; ctx.shadowColor = '#ff0055';
+        ctx.strokeStyle = '#ff0055'; ctx.lineWidth = 3;
         ctx.beginPath();
         for (let i = 0; i < 6; i++) {
             const angle = (Math.PI / 3) * i; const x = Math.cos(angle) * 60; const y = Math.sin(angle) * 60;
@@ -230,10 +322,23 @@ function drawBoundaries() {
 }
 
 function drawGrid() {
-    const size = mapSize/2; const step = 150;
-    ctx.strokeStyle = 'rgba(0, 242, 255, 0.1)'; ctx.lineWidth = 1;
-    for (let x = -size; x <= size; x += step) { ctx.beginPath(); ctx.moveTo(x, -size); ctx.lineTo(x, size); ctx.stroke(); }
-    for (let y = -size; y <= size; y += step) { ctx.beginPath(); ctx.moveTo(-size, y); ctx.lineTo(size, y); ctx.stroke(); }
+    const step = 150;
+    ctx.strokeStyle = 'rgba(0, 242, 255, 0.08)'; ctx.lineWidth = 1;
+    
+    // Solo dibujar líneas visibles en pantalla (Culling)
+    const startX = Math.floor((camera.x - canvas.width/2) / step) * step;
+    const endX = Math.ceil((camera.x + canvas.width/2) / step) * step;
+    const startY = Math.floor((camera.y - canvas.height/2) / step) * step;
+    const endY = Math.ceil((camera.y + canvas.height/2) / step) * step;
+
+    for (let x = startX; x <= endX; x += step) {
+        if (x < -mapSize/2 || x > mapSize/2) continue;
+        ctx.beginPath(); ctx.moveTo(x, Math.max(-mapSize/2, startY)); ctx.lineTo(x, Math.min(mapSize/2, endY)); ctx.stroke();
+    }
+    for (let y = startY; y <= endY; y += step) {
+        if (y < -mapSize/2 || y > mapSize/2) continue;
+        ctx.beginPath(); ctx.moveTo(Math.max(-mapSize/2, startX), y); ctx.lineTo(Math.min(mapSize/2, endX), y); ctx.stroke();
+    }
 }
 
 function drawDiamond(ctx, x, y, size) {
@@ -244,7 +349,7 @@ function drawDiamond(ctx, x, y, size) {
 function drawMinimap() {
     mCtx.clearRect(0, 0, miniCanvas.width, miniCanvas.height);
     const scale = miniCanvas.width / mapSize, center = miniCanvas.width / 2;
-    players.forEach(p => {
+    currentState.players.forEach(p => {
         const mx = center + p.position.x * scale, my = center + p.position.y * scale;
         mCtx.fillStyle = p.id === myId ? '#00f2ff' : '#ff0055'; mCtx.fillRect(mx-2, my-2, 4, 4);
     });
