@@ -1,6 +1,6 @@
 # fly.toml app configuration file generated for ensamblador-io
 
-app = "app-patient-voice-900"
+app = "ensamblador"
 primary_region = "iad"
 
 [http_service]
