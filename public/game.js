@@ -81,8 +81,8 @@ window.addEventListener('keyup', (e) => {
 
 socket.on('connect', () => { myId = socket.id; });
 
-let targetState = { players: [], modules: [], projectiles: [], satellites: [] };
-let currentState = { players: [], modules: [], projectiles: [], satellites: [] };
+let targetState = { players: [], modules: [], projectiles: [], satellites: [], bots: [] };
+let currentState = { players: [], modules: [], projectiles: [], satellites: [], bots: [] };
 
 socket.on('s', (state) => {
     // Descomprimir el estado recibido
@@ -98,9 +98,13 @@ socket.on('s', (state) => {
     targetState.modules = (state.m || []).map(m => ({ position: {x: m.x, y: m.y}, type: m.t }));
     targetState.projectiles = (state.pr || []).map(p => ({ position: {x: p.x, y: p.y} }));
     targetState.satellites = (state.sa || []).map(s => ({ position: {x: s.x, y: s.y}, angle: s.a }));
+    targetState.bots = (state.bo || []).map(b => ({ position: {x: b.x, y: b.y}, angle: b.a }));
     
-    // Si es el primer paquete, inicializar currentState
-    if (currentState.players.length === 0) currentState = JSON.parse(JSON.stringify(targetState));
+    // Si currentState está vacío, inicializarlo inmediatamente con el primer paquete
+    if (currentState.players.length === 0 && targetState.players.length > 0) {
+        currentState = JSON.parse(JSON.stringify(targetState));
+        currentState.bots = JSON.parse(JSON.stringify(targetState.bots));
+    }
     
     const me = targetState.players.find(p => p.id === myId);
     if (me) {
@@ -111,17 +115,20 @@ socket.on('s', (state) => {
 
 // Función LERP para interpolación lineal
 function lerp(start, end, t) {
+    if (isNaN(start)) return end;
     return start + (end - start) * t;
 }
 
 function updateInterpolation() {
-    const t = 0.15; // Factor de suavizado
+    const t = 0.2; // Aumentamos un poco el factor para que sea más responsivo
     
     targetState.players.forEach(tp => {
         let cp = currentState.players.find(p => p.id === tp.id);
         if (!cp) {
+            // Jugador nuevo: clonar inmediatamente
             currentState.players.push(JSON.parse(JSON.stringify(tp)));
         } else {
+            // Interpolar posición
             cp.position.x = lerp(cp.position.x, tp.position.x, t);
             cp.position.y = lerp(cp.position.y, tp.position.y, t);
             
@@ -131,6 +138,7 @@ function updateInterpolation() {
             while (diff > Math.PI) diff -= Math.PI * 2;
             cp.angle += diff * t;
             
+            // Copiar estados booleanos y arrays directamente
             cp.modules = tp.modules;
             cp.boostActive = tp.boostActive;
             cp.isBraking = tp.isBraking;
@@ -139,9 +147,11 @@ function updateInterpolation() {
     });
     
     // Eliminar jugadores que ya no están
-    currentState.players = currentState.players.filter(cp => targetState.players.some(tp => tp.id === cp.id));
+    if (currentState.players.length !== targetState.players.length) {
+        currentState.players = currentState.players.filter(cp => targetState.players.some(tp => tp.id === cp.id));
+    }
     
-    // Cámar sigue al jugador suavemente
+    // Cámara sigue al jugador suavemente (usar targetState para evitar lag de cámara si se desea, pero currentState es más suave)
     const me = currentState.players.find(p => p.id === myId);
     if (me) {
         camera.x = me.position.x;
@@ -158,8 +168,20 @@ function updateInterpolation() {
             currentState.satellites[i].angle = lerp(currentState.satellites[i].angle, ts.angle, t);
         }
     });
+
+    // Interpolación de bots
+    targetState.bots.forEach((tb, i) => {
+        if (!currentState.bots[i]) {
+            currentState.bots[i] = JSON.parse(JSON.stringify(tb));
+        } else {
+            currentState.bots[i].position.x = lerp(currentState.bots[i].position.x, tb.position.x, t);
+            currentState.bots[i].position.y = lerp(currentState.bots[i].position.y, tb.position.y, t);
+            currentState.bots[i].angle = lerp(currentState.bots[i].angle, tb.angle, t);
+        }
+    });
+    // Limpiar bots muertos
+    if (currentState.bots.length > targetState.bots.length) currentState.bots.splice(targetState.bots.length);
     
-    // Las balas y módulos no suelen necesitar tanta interpolación, se actualizan directo
     currentState.modules = targetState.modules;
     currentState.projectiles = targetState.projectiles;
 }
@@ -214,6 +236,7 @@ function draw() {
     drawBoundaries();
     drawGrid();
     drawSatellites();
+    drawBots();
 
     particles = particles.filter(p => {
         p.x += p.vx; p.y += p.vy; p.life--;
@@ -311,6 +334,21 @@ function drawSatellites() {
         const pulse = (Math.sin(Date.now() / 200) + 1) / 2;
         ctx.fillStyle = `rgba(255, 0, 85, ${0.3 + pulse * 0.7})`;
         ctx.beginPath(); ctx.arc(0, 0, 20, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+    });
+}
+
+function drawBots() {
+    currentState.bots.forEach(b => {
+        if (Math.abs(b.position.x - camera.x) > canvas.width || Math.abs(b.position.y - camera.y) > canvas.height) return;
+        ctx.save(); ctx.translate(b.position.x, b.position.y); ctx.rotate(b.angle);
+        ctx.strokeStyle = '#ffaa00'; ctx.lineWidth = 2;
+        ctx.strokeRect(-12, -12, 24, 24);
+        ctx.fillStyle = 'rgba(255, 170, 0, 0.2)';
+        ctx.fillRect(-12, -12, 24, 24);
+        // Ojo de la mosca
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(6, 0, 4, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
     });
 }

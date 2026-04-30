@@ -40,6 +40,21 @@ const walls = [
 ];
 World.add(engine.world, walls);
 
+const bots = [];
+function spawnBot() {
+    const x = (Math.random() - 0.5) * (mapSize - 400);
+    const y = (Math.random() - 0.5) * (mapSize - 400);
+    const body = Bodies.rectangle(x, y, 25, 25, { 
+        label: 'bot', 
+        frictionAir: 0.04, 
+        restitution: 0.6,
+        plugin: { hp: 20 } 
+    });
+    bots.push({ id: 'bot_' + Math.random().toString(36).substr(2, 9), body });
+    World.add(engine.world, body);
+}
+for (let i = 0; i < 25; i++) spawnBot();
+
 function spawnSatellite() {
     const x = (Math.random() - 0.5) * (mapSize - 200);
     const y = (Math.random() - 0.5) * (mapSize - 200);
@@ -88,15 +103,47 @@ Matter.Events.on(engine, 'collisionStart', (event) => {
         if (shipPart && junkMod) attachToPlayer(shipPart, junkMod);
 
         const projectile = [bodyA, bodyB].find(b => b.label === 'projectile');
-        if (projectile && shipPart) damagePlayer(shipPart, 'PROJECTILE');
+        if (projectile && shipPart) {
+            const playerOwner = Object.values(players).find(p => p.body?.parts?.includes(shipPart));
+            // Solo aplicar daño si el proyectil NO es del mismo jugador que la parte impactada
+            if (playerOwner && projectile.plugin.ownerId !== playerOwner.id) {
+                damagePlayer(shipPart, 'PROJECTILE');
+            }
+        }
 
         const drillPart = [bodyA, bodyB].find(b => b.label === 'drill');
         if (drillPart && shipPart && drillPart !== shipPart) damagePlayer(shipPart, 'DRILL');
 
         const satellite = [bodyA, bodyB].find(b => b.label === 'satellite');
         if (shipPart && satellite) triggerSatelliteCollision(shipPart);
+
+        // Colisión Proyectil vs Bot
+        const botBody = [bodyA, bodyB].find(b => b.label === 'bot');
+        if (projectile && botBody) {
+            damageBot(botBody, 20);
+            World.remove(engine.world, projectile);
+            const pIdx = projectiles.findIndex(p => p.body === projectile);
+            if (pIdx !== -1) projectiles.splice(pIdx, 1);
+        }
+        
+        // Colisión Taladro vs Bot
+        if (drillPart && botBody) {
+            damageBot(botBody, 5);
+        }
     });
 });
+
+function damageBot(botBody, amount) {
+    botBody.plugin.hp -= amount;
+    if (botBody.plugin.hp <= 0) {
+        const idx = bots.findIndex(b => b.body === botBody);
+        if (idx !== -1) {
+            World.remove(engine.world, botBody);
+            bots.splice(idx, 1);
+            setTimeout(spawnBot, 5000); // Reaparecer tras 5 segundos
+        }
+    }
+}
 
 function damagePlayer(shipPart, cause) {
     const player = Object.values(players).find(p => p.body?.parts?.includes(shipPart));
@@ -186,14 +233,59 @@ io.on('connection', (socket) => {
 
 function rotateShip(player) {
     if (!player.body) return;
-    player.shipStructure = player.shipStructure.map(mod => mod.type === 'core' ? mod : { ...mod, x: -mod.y, y: mod.x });
-    const toProcess = [...player.shipStructure.filter(m => m.type !== 'core')];
-    toProcess.sort((a, b) => (Math.abs(a.x) + Math.abs(a.y)) - (Math.abs(b.x) + Math.abs(b.y)));
+    
+    const mods = player.shipStructure.filter(m => m.type !== 'core');
+    const drills = mods.filter(m => m.type === 'drill');
+    const cannons = mods.filter(m => m.type === 'cannon');
+    const shields = mods.filter(m => m.type === 'shield');
+    const thrusters = mods.filter(m => m.type === 'thruster');
+
     const final = [{ x: 0, y: 0, type: 'core' }];
-    for (let mod of toProcess) {
-        if (hasNeighbor(mod.x, mod.y, final)) final.push(mod);
-        else { const spot = findNearestSpot(mod.x, mod.y, final); final.push({ x: spot.x, y: spot.y, type: mod.type }); }
-    }
+    const occupied = new Set(["0,0"]);
+
+    const tryPlace = (type, x, y) => {
+        const key = `${x},${y}`;
+        if (occupied.has(key)) return false;
+        const hasNeighbor = [[1,0],[-1,0],[0,1],[0,-1]].some(([dx, dy]) => occupied.has(`${x+dx},${y+dy}`));
+        if (hasNeighbor) {
+            final.push({ x, y, type });
+            occupied.add(key);
+            return true;
+        }
+        return false;
+    };
+
+    // Slots ideales para forma triangular
+    const drillSlots = [[1,0], [2,0], [1,1], [1,-1], [3,0], [2,1], [2,-1], [3,1], [3,-1]];
+    const cannonSlots = [[0,1], [0,-1], [1,1], [1,-1], [2,1], [2,-1], [-1,1], [-1,-1]];
+    const thrusterSlots = [[0,2], [0,-2], [-1,2], [-1,-2], [1,2], [1,-2], [0,3], [0,-3]];
+    const shieldSlots = [[-1,0], [-2,0], [-1,1], [-1,-1], [-2,1], [-2,-1], [-3,0]];
+
+    // Repartir por orden de importancia táctica
+    drills.forEach(m => { for(let s of drillSlots) if(tryPlace('drill', s[0], s[1])) break; });
+    cannons.forEach(m => { for(let s of cannonSlots) if(tryPlace('cannon', s[0], s[1])) break; });
+    thrusters.forEach(m => { for(let s of thrusterSlots) if(tryPlace('thruster', s[0], s[1])) break; });
+    shields.forEach(m => { for(let s of shieldSlots) if(tryPlace('shield', s[0], s[1])) break; });
+
+    // Fallback por si sobran piezas
+    const counts = { drill: drills.length, cannon: cannons.length, thruster: thrusters.length, shield: shields.length };
+    const placed = { drill: 0, cannon: 0, thruster: 0, shield: 0 };
+    final.forEach(f => { if(f.type !== 'core') placed[f.type]++; });
+
+    ['drill', 'cannon', 'thruster', 'shield'].forEach(t => {
+        while(placed[t] < counts[t]) {
+            let found = false;
+            for(let r=1; r<10 && !found; r++) {
+                for(let ix=-r; ix<=r && !found; ix++) {
+                    for(let iy=-r; iy<=r && !found; iy++) {
+                        if(tryPlace(t, ix, iy)) { placed[t]++; found = true; }
+                    }
+                }
+            }
+            if(!found) break;
+        }
+    });
+
     player.shipStructure = final;
     rebuildShip(player);
 }
@@ -220,8 +312,7 @@ function findNearestSpot(tx, ty, s) {
     return best;
 }
 
-// Optimización: Emitir estado a ~22Hz en lugar de 60Hz para ahorrar ancho de banda
-const EMIT_INTERVAL = 45; 
+const EMIT_INTERVAL = 45;
 let lastEmitTime = 0;
 
 setInterval(() => {
@@ -230,14 +321,24 @@ setInterval(() => {
 
     Object.values(players).forEach(p => {
         if (!p.body) return;
-        let force = 0.012 + (p.shipStructure.filter(m => m.type === 'thruster').length * 0.006);
+        
+        let thrusterPower = (p.shipStructure.filter(m => m.type === 'thruster').length * 0.006);
+        let force = 0.012 + thrusterPower;
         const torque = 0.12;
+        
+        // Freno (E): Detiene el movimiento constante y aplica fricción
         if (p.inputs.brake) { 
             Body.setVelocity(p.body, { x: p.body.velocity.x * 0.9, y: p.body.velocity.y * 0.9 }); 
             Body.setAngularVelocity(p.body, p.body.angularVelocity * 0.9); 
             p.isBraking = true; 
-        } else p.isBraking = false;
+        } else {
+            p.isBraking = false;
+        }
         
+        // Movimiento constante "Levitación" (0.0015 es muy lento y suave)
+        const baseDrift = 0.0015;
+        let finalPush = p.isBraking ? 0 : baseDrift;
+
         if (p.inputs.boost && (!p.lastBoost || now - p.lastBoost > 2000)) { 
             p.boostActive = true; 
             p.boostStartTime = now; 
@@ -247,16 +348,33 @@ setInterval(() => {
             if (now - p.boostStartTime < 500) force *= 3; 
             else p.boostActive = false; 
         }
-        if (p.inputs.up) Body.applyForce(p.body, p.body.position, { x: Math.cos(p.body.angle) * force, y: Math.sin(p.body.angle) * force });
+
+        // Si presiona W, suma potencia. Si no, mantiene el drift base.
+        if (p.inputs.up) finalPush += force;
+        
+        Body.applyForce(p.body, p.body.position, { 
+            x: Math.cos(p.body.angle) * finalPush, 
+            y: Math.sin(p.body.angle) * finalPush 
+        });
+
         if (p.inputs.left) Body.setAngularVelocity(p.body, -torque);
         if (p.inputs.right) Body.setAngularVelocity(p.body, torque);
         
         if (p.inputs.shoot && now - p.lastShoot > 250) {
             p.shipStructure.filter(m => m.type === 'cannon').forEach(m => {
                 const angle = p.body.angle;
-                const sx = p.body.position.x + (m.x * 40 * Math.cos(angle)) - (m.y * 40 * Math.sin(angle)) + Math.cos(angle) * 40;
-                const sy = p.body.position.y + (m.x * 40 * Math.sin(angle)) + (m.y * 40 * Math.cos(angle)) + Math.sin(angle) * 40;
-                const b = Bodies.circle(sx, sy, 5, { label: 'projectile', frictionAir: 0, restitution: 1 });
+                // Ajustamos sx y sy para que la bala salga un poco más adelante del cañón (+50 en lugar de +40)
+                const sx = p.body.position.x + (m.x * 40 * Math.cos(angle)) - (m.y * 40 * Math.sin(angle)) + Math.cos(angle) * 50;
+                const sy = p.body.position.y + (m.x * 40 * Math.sin(angle)) + (m.y * 40 * Math.cos(angle)) + Math.sin(angle) * 50;
+                
+                // Añadimos plugin.ownerId para identificar quién disparó
+                const b = Bodies.circle(sx, sy, 5, { 
+                    label: 'projectile', 
+                    frictionAir: 0, 
+                    restitution: 1,
+                    plugin: { ownerId: p.id } 
+                });
+                
                 Body.setVelocity(b, { x: Math.cos(angle) * 22, y: Math.sin(angle) * 22 });
                 projectiles.push({ body: b, life: 70 });
                 World.add(engine.world, b);
@@ -265,19 +383,45 @@ setInterval(() => {
         }
     });
 
+    // Lógica de los Bots (Moscas)
+    bots.forEach(bot => {
+        const pos = bot.body.position;
+        // Buscar jugador más cercano
+        let nearestDist = 800;
+        let target = null;
+        Object.values(players).forEach(p => {
+            if (!p.body) return;
+            const d = Math.hypot(p.body.position.x - pos.x, p.body.position.y - pos.y);
+            if (d < nearestDist) { nearestDist = d; target = p.body.position; }
+        });
+
+        if (target) {
+            // Seguir al jugador
+            const angle = Math.atan2(target.y - pos.y, target.x - pos.x);
+            Body.applyForce(bot.body, pos, { x: Math.cos(angle) * 0.0006, y: Math.sin(angle) * 0.0006 });
+        } else {
+            // Movimiento errático de mosca
+            if (Math.random() > 0.95) {
+                const randAngle = Math.random() * Math.PI * 2;
+                Body.applyForce(bot.body, pos, { x: Math.cos(randAngle) * 0.001, y: Math.sin(randAngle) * 0.001 });
+            }
+        }
+        // Rotar lentamente
+        Body.setAngle(bot.body, bot.body.angle + 0.02);
+    });
+
     for (let i = projectiles.length - 1; i >= 0; i--) {
         projectiles[i].life--;
         if (projectiles[i].life <= 0) { World.remove(engine.world, projectiles[i].body); projectiles.splice(i, 1); }
     }
 
-    // Solo emitir si ha pasado el intervalo para ahorrar red
     if (now - lastEmitTime >= EMIT_INTERVAL) {
         lastEmitTime = now;
-        io.emit('s', { // 's' para state
+        io.emit('s', { 
             p: Object.values(players).filter(p => p.nickname && p.body).map(p => ({ 
                 i: p.id, 
                 n: p.nickname, 
-                pos: {x: Math.round(p.body.position.x), y: Math.round(p.body.position.y)}, // Redondear para ahorrar bytes
+                pos: {x: Math.round(p.body.position.x), y: Math.round(p.body.position.y)}, 
                 a: Number(p.body.angle.toFixed(3)), 
                 m: p.shipStructure, 
                 b: p.boostActive, 
@@ -285,7 +429,8 @@ setInterval(() => {
             })),
             m: modules.map(m => ({ x: Math.round(m.body.position.x), y: Math.round(m.body.position.y), t: m.type })),
             pr: projectiles.map(p => ({ x: Math.round(p.body.position.x), y: Math.round(p.body.position.y) })),
-            sa: obstacles.map(o => ({ x: Math.round(o.position.x), y: Math.round(o.position.y), a: Number(o.angle.toFixed(3)) }))
+            sa: obstacles.map(o => ({ x: Math.round(o.position.x), y: Math.round(o.position.y), a: Number(o.angle.toFixed(3)) })),
+            bo: bots.map(b => ({ x: Math.round(b.body.position.x), y: Math.round(b.body.position.y), a: Number(b.body.angle.toFixed(3)) }))
         });
     }
 }, 1000 / 60);
