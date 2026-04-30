@@ -40,21 +40,6 @@ const walls = [
 ];
 World.add(engine.world, walls);
 
-const bots = [];
-function spawnBot() {
-    const x = (Math.random() - 0.5) * (mapSize - 400);
-    const y = (Math.random() - 0.5) * (mapSize - 400);
-    const body = Bodies.rectangle(x, y, 25, 25, { 
-        label: 'bot', 
-        frictionAir: 0.04, 
-        restitution: 0.6,
-        plugin: { hp: 20 } 
-    });
-    bots.push({ id: 'bot_' + Math.random().toString(36).substr(2, 9), body });
-    World.add(engine.world, body);
-}
-for (let i = 0; i < 25; i++) spawnBot();
-
 function spawnSatellite() {
     const x = (Math.random() - 0.5) * (mapSize - 200);
     const y = (Math.random() - 0.5) * (mapSize - 200);
@@ -63,6 +48,26 @@ function spawnSatellite() {
     World.add(engine.world, body);
 }
 for (let i = 0; i < 10; i++) spawnSatellite();
+
+const movingSatellites = [];
+function spawnMovingSatellite() {
+    const startX = (Math.random() - 0.5) * (mapSize - 800);
+    const startY = (Math.random() - 0.5) * (mapSize - 800);
+    const range = 300 + Math.random() * 500;
+    const isVertical = Math.random() > 0.5;
+    const body = Bodies.polygon(startX, startY, 4, 25, { 
+        isStatic: true, 
+        label: 'moving_satellite' 
+    });
+    body.plugin = { 
+        startX, startY, range, isVertical, 
+        speed: 0.0004 + Math.random() * 0.0008, 
+        offset: Math.random() * Math.PI * 2 
+    };
+    movingSatellites.push(body);
+    World.add(engine.world, body);
+}
+for (let i = 0; i < 8; i++) spawnMovingSatellite();
 
 function spawnModule() {
     const types = ['thruster', 'cannon', 'shield', 'drill'];
@@ -117,33 +122,10 @@ Matter.Events.on(engine, 'collisionStart', (event) => {
         const satellite = [bodyA, bodyB].find(b => b.label === 'satellite');
         if (shipPart && satellite) triggerSatelliteCollision(shipPart);
 
-        // Colisión Proyectil vs Bot
-        const botBody = [bodyA, bodyB].find(b => b.label === 'bot');
-        if (projectile && botBody) {
-            damageBot(botBody, 20);
-            World.remove(engine.world, projectile);
-            const pIdx = projectiles.findIndex(p => p.body === projectile);
-            if (pIdx !== -1) projectiles.splice(pIdx, 1);
-        }
-        
-        // Colisión Taladro vs Bot
-        if (drillPart && botBody) {
-            damageBot(botBody, 5);
-        }
+        const mSatellite = [bodyA, bodyB].find(b => b.label === 'moving_satellite');
+        if (shipPart && mSatellite) triggerSatelliteCollision(shipPart);
     });
 });
-
-function damageBot(botBody, amount) {
-    botBody.plugin.hp -= amount;
-    if (botBody.plugin.hp <= 0) {
-        const idx = bots.findIndex(b => b.body === botBody);
-        if (idx !== -1) {
-            World.remove(engine.world, botBody);
-            bots.splice(idx, 1);
-            setTimeout(spawnBot, 5000); // Reaparecer tras 5 segundos
-        }
-    }
-}
 
 function damagePlayer(shipPart, cause) {
     const player = Object.values(players).find(p => p.body?.parts?.includes(shipPart));
@@ -385,31 +367,13 @@ setInterval(() => {
         }
     });
 
-    // Lógica de los Bots (Moscas)
-    bots.forEach(bot => {
-        const pos = bot.body.position;
-        // Buscar jugador más cercano
-        let nearestDist = 800;
-        let target = null;
-        Object.values(players).forEach(p => {
-            if (!p.body) return;
-            const d = Math.hypot(p.body.position.x - pos.x, p.body.position.y - pos.y);
-            if (d < nearestDist) { nearestDist = d; target = p.body.position; }
-        });
-
-        if (target) {
-            // Seguir al jugador
-            const angle = Math.atan2(target.y - pos.y, target.x - pos.x);
-            Body.applyForce(bot.body, pos, { x: Math.cos(angle) * 0.0006, y: Math.sin(angle) * 0.0006 });
-        } else {
-            // Movimiento errático de mosca
-            if (Math.random() > 0.95) {
-                const randAngle = Math.random() * Math.PI * 2;
-                Body.applyForce(bot.body, pos, { x: Math.cos(randAngle) * 0.001, y: Math.sin(randAngle) * 0.001 });
-            }
-        }
-        // Rotar lentamente
-        Body.setAngle(bot.body, bot.body.angle + 0.02);
+    // Movimiento de Satélites Patrulla
+    movingSatellites.forEach(s => {
+        const p = s.plugin;
+        const delta = Math.sin(now * p.speed + p.offset) * p.range;
+        const nx = p.isVertical ? p.startX : p.startX + delta;
+        const ny = p.isVertical ? p.startY + delta : p.startY;
+        Body.setPosition(s, { x: nx, y: ny });
     });
 
     for (let i = projectiles.length - 1; i >= 0; i--) {
@@ -432,7 +396,7 @@ setInterval(() => {
             m: modules.map(m => ({ x: Math.round(m.body.position.x), y: Math.round(m.body.position.y), t: m.type })),
             pr: projectiles.map(p => ({ x: Math.round(p.body.position.x), y: Math.round(p.body.position.y) })),
             sa: obstacles.map(o => ({ x: Math.round(o.position.x), y: Math.round(o.position.y), a: Number(o.angle.toFixed(3)) })),
-            bo: bots.map(b => ({ x: Math.round(b.body.position.x), y: Math.round(b.body.position.y), a: Number(b.body.angle.toFixed(3)) }))
+            ms: movingSatellites.map(s => ({ x: Math.round(s.position.x), y: Math.round(s.position.y), a: Number(s.angle.toFixed(3)) }))
         });
     }
 }, 1000 / 60);

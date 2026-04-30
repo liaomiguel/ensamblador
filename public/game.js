@@ -81,8 +81,8 @@ window.addEventListener('keyup', (e) => {
 
 socket.on('connect', () => { myId = socket.id; });
 
-let targetState = { players: [], modules: [], projectiles: [], satellites: [], bots: [] };
-let currentState = { players: [], modules: [], projectiles: [], satellites: [], bots: [] };
+let targetState = { players: [], modules: [], projectiles: [], satellites: [], movingSatellites: [] };
+let currentState = { players: [], modules: [], projectiles: [], satellites: [], movingSatellites: [] };
 
 socket.on('s', (state) => {
     // Descomprimir el estado recibido
@@ -98,12 +98,11 @@ socket.on('s', (state) => {
     targetState.modules = (state.m || []).map(m => ({ position: {x: m.x, y: m.y}, type: m.t }));
     targetState.projectiles = (state.pr || []).map(p => ({ position: {x: p.x, y: p.y} }));
     targetState.satellites = (state.sa || []).map(s => ({ position: {x: s.x, y: s.y}, angle: s.a }));
-    targetState.bots = (state.bo || []).map(b => ({ position: {x: b.x, y: b.y}, angle: b.a }));
+    targetState.movingSatellites = (state.ms || []).map(s => ({ position: {x: s.x, y: s.y}, angle: s.a }));
     
     // Si currentState está vacío, inicializarlo inmediatamente con el primer paquete
     if (currentState.players.length === 0 && targetState.players.length > 0) {
         currentState = JSON.parse(JSON.stringify(targetState));
-        currentState.bots = JSON.parse(JSON.stringify(targetState.bots));
     }
     
     const me = targetState.players.find(p => p.id === myId);
@@ -169,18 +168,16 @@ function updateInterpolation() {
         }
     });
 
-    // Interpolación de bots
-    targetState.bots.forEach((tb, i) => {
-        if (!currentState.bots[i]) {
-            currentState.bots[i] = JSON.parse(JSON.stringify(tb));
+    // Interpolación de satélites móviles
+    targetState.movingSatellites.forEach((ts, i) => {
+        if (!currentState.movingSatellites[i]) {
+            currentState.movingSatellites[i] = JSON.parse(JSON.stringify(ts));
         } else {
-            currentState.bots[i].position.x = lerp(currentState.bots[i].position.x, tb.position.x, t);
-            currentState.bots[i].position.y = lerp(currentState.bots[i].position.y, tb.position.y, t);
-            currentState.bots[i].angle = lerp(currentState.bots[i].angle, tb.angle, t);
+            currentState.movingSatellites[i].position.x = lerp(currentState.movingSatellites[i].position.x, ts.position.x, t);
+            currentState.movingSatellites[i].position.y = lerp(currentState.movingSatellites[i].position.y, ts.position.y, t);
+            currentState.movingSatellites[i].angle = lerp(currentState.movingSatellites[i].angle, ts.angle, t);
         }
     });
-    // Limpiar bots muertos
-    if (currentState.bots.length > targetState.bots.length) currentState.bots.splice(targetState.bots.length);
     
     currentState.modules = targetState.modules;
     currentState.projectiles = targetState.projectiles;
@@ -236,7 +233,7 @@ function draw() {
     drawBoundaries();
     drawGrid();
     drawSatellites();
-    drawBots();
+    drawMovingSatellites();
 
     particles = particles.filter(p => {
         p.x += p.vx; p.y += p.vy; p.life--;
@@ -338,17 +335,15 @@ function drawSatellites() {
     });
 }
 
-function drawBots() {
-    currentState.bots.forEach(b => {
-        if (Math.abs(b.position.x - camera.x) > canvas.width || Math.abs(b.position.y - camera.y) > canvas.height) return;
-        ctx.save(); ctx.translate(b.position.x, b.position.y); ctx.rotate(b.angle);
-        ctx.strokeStyle = '#ffaa00'; ctx.lineWidth = 2;
-        ctx.strokeRect(-12, -12, 24, 24);
-        ctx.fillStyle = 'rgba(255, 170, 0, 0.2)';
-        ctx.fillRect(-12, -12, 24, 24);
-        // Ojo de la mosca
-        ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.arc(6, 0, 4, 0, Math.PI * 2); ctx.fill();
+function drawMovingSatellites() {
+    currentState.movingSatellites.forEach(s => {
+        if (Math.abs(s.position.x - camera.x) > canvas.width || Math.abs(s.position.y - camera.y) > canvas.height) return;
+        ctx.save(); ctx.translate(s.position.x, s.position.y); ctx.rotate(s.angle);
+        ctx.strokeStyle = '#00f2ff'; ctx.lineWidth = 2; ctx.shadowBlur = 10; ctx.shadowColor = '#00f2ff';
+        drawDiamond(ctx, 0, 0, 15);
+        const pulse = (Math.sin(Date.now() / 150) + 1) / 2;
+        ctx.fillStyle = `rgba(0, 242, 255, ${0.2 + pulse * 0.4})`;
+        ctx.fill();
         ctx.restore();
     });
 }
