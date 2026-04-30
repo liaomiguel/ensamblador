@@ -10,13 +10,15 @@
 En un universo de chatarra espacial, eres un **Núcleo** solitario. Tu misión es recolectar módulos para evolucionar tu estructura y convertirte en la fuerza dominante.
 
 ### 🛠️ Mecánicas Únicas
+
 - **Ensamblaje Modular:** Las piezas se conectan físicamente a tu nave mediante un sistema de rejilla dinámica.
-- **Auto-Reorganización (R):** Un algoritmo inteligente que ordena tus piezas en una formación triangular táctica de combate.
+- **Auto-Reorganización Automática:** Un algoritmo inteligente que ordena tus piezas instantáneamente en una formación triangular táctica de combate al recogerlas o perderlas.
 - **Inercia Espacial:** Simulación de levitación constante en gravedad cero.
 - **Freno de Emergencia (E):** Control absoluto para maniobras evasivas precisas.
 - **Sistema de Daño por Capas:** Protege tu núcleo con escudos y módulos; si el núcleo cae, se acaba el juego.
 
 ## 🧱 Tipos de Módulos
+
 - ⚪ **Núcleo:** Tu centro vital. Protégelo a toda costa.
 - 🟡 **Taladro:** Arma de contacto letal para embestidas.
 - 🔴 **Cañón:** Sistema de defensa y ataque a larga distancia.
@@ -24,10 +26,12 @@ En un universo de chatarra espacial, eres un **Núcleo** solitario. Tu misión e
 - 🔵 **Propulsor:** Mejora la potencia de empuje y la capacidad de turbo.
 
 ## 🌌 Peligros del Entorno
+
 - **Satélites Hexagonales:** Estáticos y masivos. Provocan la pérdida masiva de módulos.
 - **Patrullas Triangulares:** Pequeños drones cian que patrullan lentamente. Difíciles de esquivar a alta velocidad.
 
 ## 🛠️ Stack Tecnológico
+
 - **Motor de Física:** [Matter.js](https://brm.io/matter-js/) para colisiones y dinámicas de cuerpos rígidos.
 - **Comunicación:** [Socket.io](https://socket.io/) para sincronización en tiempo real de baja latencia.
 - **Servidor:** Node.js + Express.
@@ -48,9 +52,11 @@ En un universo de chatarra espacial, eres un **Núcleo** solitario. Tu misión e
 ## ☁️ Despliegue (Fly.io)
 
 Este proyecto está listo para ser desplegado en Fly.io:
+
 ```bash
 flyctl deploy
 ```
 
 ---
-Desarrollado con ❤️ por el equipo de ENSAMBLADOR.io
+
+Desarrollado con ❤️ por Liao Miguel. - [liao.com.ar](https://liao.com.ar/)

@@ -201,9 +201,24 @@ continueButton.addEventListener('click', () => {
 });
 
 playButton.addEventListener('click', () => {
-    socket.emit('join', nicknameInput.value.trim());
-    menuOverlay.style.display = 'none';
+    const nickname = nicknameInput.value.trim();
+    const speedSlider = document.getElementById('speed-slider');
+    const customSpeed = speedSlider ? parseFloat(speedSlider.value) : 0.001;
+    
+    if (nickname) {
+        socket.emit('join', { nickname, speed: customSpeed });
+        menuOverlay.style.display = 'none';
+    }
 });
+
+// Actualizar el valor visual del slider si existe
+const speedSlider = document.getElementById('speed-slider');
+const speedValue = document.getElementById('speed-value');
+if (speedSlider && speedValue) {
+    speedSlider.addEventListener('input', (e) => {
+        speedValue.innerText = e.target.value;
+    });
+}
 
 function updateLeaderboard() {
     const list = document.getElementById('leaderboard-list');
@@ -280,35 +295,69 @@ function draw() {
             ctx.shadowBlur = 10;
         }
 
-        p.modules.forEach(mod => {
-            const size = 36; const x = mod.x * 40; const y = mod.y * 40;
-            ctx.strokeStyle = moduleColors[mod.type];
-            if (useEffects) ctx.shadowColor = ctx.strokeStyle;
+        // Dibujar cada módulo con estilo Cyberpunk Neón
+        p.modules.forEach(m => {
+            ctx.save();
+            ctx.translate(m.x * 40, m.y * 40);
             
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-            ctx.lineWidth = 2; 
-            ctx.strokeRect(x - size/2, y - size/2, size, size);
-            ctx.fillRect(x - size/2, y - size/2, size, size);
+            const color = moduleColors[m.type] || '#fff';
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = color;
             
-            if (mod.type === 'core') { 
-                ctx.fillStyle = '#fff';
-                ctx.beginPath();
-                ctx.moveTo(x + 12, y);
-                ctx.lineTo(x - 10, y - 10);
-                ctx.lineTo(x - 5, y);
-                ctx.lineTo(x - 10, y + 10);
-                ctx.closePath();
-                ctx.fill();
-            } else if (mod.type === 'thruster') {
-                ctx.strokeStyle = p.boostActive ? '#ffffff' : '#00f2ff';
-                ctx.beginPath(); ctx.moveTo(x-size/2, y-5); ctx.lineTo(x-size/2-(p.boostActive ? 45 : 18), y); ctx.lineTo(x-size/2, y+5); ctx.stroke();
-                if (p.boostActive && Math.random() > 0.3) createParticles(p.position.x + x - 20, p.position.y + y, '#00f2ff', 1, 3, 15);
-            } else if (mod.type === 'cannon') { 
-                ctx.strokeStyle = '#ff0055'; ctx.strokeRect(x + size/2, y - 4, 15, 8); 
-            } else if (mod.type === 'drill') {
-                ctx.strokeStyle = '#ffff00'; ctx.beginPath(); ctx.moveTo(x+size/2,y-10); ctx.lineTo(x+size/2+15,y); ctx.lineTo(x+size/2,y+10); ctx.stroke();
+            ctx.beginPath();
+            switch(m.type) {
+                case 'core':
+                    // Octágono Tecnológico
+                    for(let i=0; i<8; i++) {
+                        const a = (Math.PI*2/8)*i;
+                        const x = Math.cos(a)*18, y = Math.sin(a)*18;
+                        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+                    }
+                    break;
+                case 'thruster':
+                    // Turbina Trapezoidal
+                    ctx.moveTo(-15, -15); ctx.lineTo(15, -8); ctx.lineTo(15, 8); ctx.lineTo(-15, 15);
+                    break;
+                case 'cannon':
+                    // Railgun / Cañón
+                    ctx.rect(-8, -20, 16, 40);
+                    break;
+                case 'drill':
+                    // Punta de Diamante / Taladro
+                    ctx.moveTo(-15, -18); ctx.lineTo(18, 0); ctx.lineTo(-15, 18);
+                    break;
+                case 'shield':
+                    // Hexágono de Blindaje
+                    for(let i=0; i<6; i++) {
+                        const a = (Math.PI*2/6)*i;
+                        const x = Math.cos(a)*19, y = Math.sin(a)*19;
+                        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+                    }
+                    break;
+                default:
+                    ctx.rect(-18, -18, 36, 36);
             }
+            ctx.closePath();
+            ctx.stroke();
+            
+            // Relleno sutil
+            ctx.globalAlpha = 0.2;
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+            
+            ctx.restore();
         });
+
+        // Partículas de Boost (solo si tiene propulsores)
+        if (p.boostActive && Math.random() > 0.3) {
+            p.modules.filter(m => m.type === 'thruster').forEach(m => {
+                createParticles(p.position.x, p.position.y, '#00f2ff', 1, 3, 15);
+            });
+        }
+
         ctx.restore();
     });
     
