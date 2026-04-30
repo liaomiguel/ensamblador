@@ -168,23 +168,25 @@ function damagePlayer(shipPart, cause) {
 
 function triggerSatelliteCollision(shipPart) {
     const player = Object.values(players).find(p => p.body?.parts?.includes(shipPart));
-    if (!player) return;
-    if (player.shipStructure.length >= 6) {
-        const toDrop = Math.floor(player.shipStructure.length / 2);
-        for (let i = 0; i < toDrop; i++) {
-            if (player.shipStructure.length <= 1) break;
-            const idx = Math.floor(Math.random() * (player.shipStructure.length - 1)) + 1;
-            const mod = player.shipStructure.splice(idx, 1)[0];
-            dropModule(player.body.position.x + mod.x * 40, player.body.position.y + mod.y * 40, mod.type);
-        }
-        rebuildShip(player);
+    if (!player || player.shipStructure.length <= 1) return;
+
+    // Los satélites ahora solo te "desarman"
+    // Soltamos el 30% de las piezas actuales
+    const toDrop = Math.ceil(player.shipStructure.length * 0.3);
+    
+    for (let i = 0; i < toDrop; i++) {
+        if (player.shipStructure.length <= 1) break; 
+        const idx = Math.floor(Math.random() * (player.shipStructure.length - 1)) + 1;
+        const mod = player.shipStructure.splice(idx, 1)[0];
+        
+        dropModule(
+            player.body.position.x + (Math.random() - 0.5) * 100, 
+            player.body.position.y + (Math.random() - 0.5) * 100, 
+            mod.type
+        );
     }
-    if (shipPart.label === 'core') {
-        io.to(player.id).emit('gameover', { reason: 'SOBRECARGA POR SATÉLITE' });
-        if (player.body) World.remove(engine.world, player.body);
-        player.body = null;
-        player.nickname = '';
-    }
+    
+    rebuildShip(player);
 }
 
 function attachToPlayer(shipPart, junkBody) {
