@@ -220,19 +220,38 @@ function findNearestSpot(tx, ty, s) {
     return best;
 }
 
+// Optimización: Emitir estado a ~22Hz en lugar de 60Hz para ahorrar ancho de banda
+const EMIT_INTERVAL = 45; 
+let lastEmitTime = 0;
+
 setInterval(() => {
+    const now = Date.now();
     Engine.update(engine, 1000 / 60);
+
     Object.values(players).forEach(p => {
         if (!p.body) return;
         let force = 0.012 + (p.shipStructure.filter(m => m.type === 'thruster').length * 0.006);
         const torque = 0.12;
-        if (p.inputs.brake) { Body.setVelocity(p.body, { x: p.body.velocity.x * 0.9, y: p.body.velocity.y * 0.9 }); Body.setAngularVelocity(p.body, p.body.angularVelocity * 0.9); p.isBraking = true; } else p.isBraking = false;
-        if (p.inputs.boost && (!p.lastBoost || Date.now() - p.lastBoost > 2000)) { p.boostActive = true; p.boostStartTime = Date.now(); p.lastBoost = Date.now(); }
-        if (p.boostActive) { if (Date.now() - p.boostStartTime < 500) force *= 3; else p.boostActive = false; }
+        if (p.inputs.brake) { 
+            Body.setVelocity(p.body, { x: p.body.velocity.x * 0.9, y: p.body.velocity.y * 0.9 }); 
+            Body.setAngularVelocity(p.body, p.body.angularVelocity * 0.9); 
+            p.isBraking = true; 
+        } else p.isBraking = false;
+        
+        if (p.inputs.boost && (!p.lastBoost || now - p.lastBoost > 2000)) { 
+            p.boostActive = true; 
+            p.boostStartTime = now; 
+            p.lastBoost = now; 
+        }
+        if (p.boostActive) { 
+            if (now - p.boostStartTime < 500) force *= 3; 
+            else p.boostActive = false; 
+        }
         if (p.inputs.up) Body.applyForce(p.body, p.body.position, { x: Math.cos(p.body.angle) * force, y: Math.sin(p.body.angle) * force });
         if (p.inputs.left) Body.setAngularVelocity(p.body, -torque);
         if (p.inputs.right) Body.setAngularVelocity(p.body, torque);
-        if (p.inputs.shoot && Date.now() - p.lastShoot > 250) {
+        
+        if (p.inputs.shoot && now - p.lastShoot > 250) {
             p.shipStructure.filter(m => m.type === 'cannon').forEach(m => {
                 const angle = p.body.angle;
                 const sx = p.body.position.x + (m.x * 40 * Math.cos(angle)) - (m.y * 40 * Math.sin(angle)) + Math.cos(angle) * 40;
@@ -242,19 +261,33 @@ setInterval(() => {
                 projectiles.push({ body: b, life: 70 });
                 World.add(engine.world, b);
             });
-            p.lastShoot = Date.now();
+            p.lastShoot = now;
         }
     });
+
     for (let i = projectiles.length - 1; i >= 0; i--) {
         projectiles[i].life--;
         if (projectiles[i].life <= 0) { World.remove(engine.world, projectiles[i].body); projectiles.splice(i, 1); }
     }
-    io.emit('state', {
-        players: Object.values(players).filter(p => p.nickname && p.body).map(p => ({ id: p.id, nickname: p.nickname, position: p.body.position, angle: p.body.angle, modules: p.shipStructure, boostActive: p.boostActive, isBraking: p.isBraking })),
-        modules: modules.map(m => ({ position: m.body.position, type: m.type })),
-        projectiles: projectiles.map(p => ({ position: p.body.position })),
-        satellites: obstacles.map(o => ({ position: o.position, angle: o.angle }))
-    });
+
+    // Solo emitir si ha pasado el intervalo para ahorrar red
+    if (now - lastEmitTime >= EMIT_INTERVAL) {
+        lastEmitTime = now;
+        io.emit('s', { // 's' para state
+            p: Object.values(players).filter(p => p.nickname && p.body).map(p => ({ 
+                i: p.id, 
+                n: p.nickname, 
+                pos: {x: Math.round(p.body.position.x), y: Math.round(p.body.position.y)}, // Redondear para ahorrar bytes
+                a: Number(p.body.angle.toFixed(3)), 
+                m: p.shipStructure, 
+                b: p.boostActive, 
+                br: p.isBraking 
+            })),
+            m: modules.map(m => ({ x: Math.round(m.body.position.x), y: Math.round(m.body.position.y), t: m.type })),
+            pr: projectiles.map(p => ({ x: Math.round(p.body.position.x), y: Math.round(p.body.position.y) })),
+            sa: obstacles.map(o => ({ x: Math.round(o.position.x), y: Math.round(o.position.y), a: Number(o.angle.toFixed(3)) }))
+        });
+    }
 }, 1000 / 60);
 
 httpServer.listen(PORT, '0.0.0.0', () => console.log(`🚀 ENSAMBLADOR.io ejecutándose en el puerto ${PORT}`));
